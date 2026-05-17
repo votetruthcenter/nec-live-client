@@ -1,0 +1,59 @@
+name: Build Windows Portable
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build-windows-portable:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        run: dotnet restore .\NEC_Live_Client\NEC_Live_Client.csproj
+
+      - name: Publish portable folder
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (Test-Path publish) { Remove-Item publish -Recurse -Force }
+          dotnet publish .\NEC_Live_Client\NEC_Live_Client.csproj `
+            -c Release `
+            -r win-x64 `
+            --self-contained true `
+            /p:PublishSingleFile=false `
+            /p:PublishReadyToRun=false `
+            /p:PublishTrimmed=false `
+            /p:PublishDir="..\publish\NEC_Live_Client\"
+          New-Item -ItemType Directory -Force -Path .\publish\NEC_Live_Client\config | Out-Null
+          Copy-Item .\NEC_Live_Client\config\client_local.sample.json .\publish\NEC_Live_Client\config\client_local.json -Force
+          Copy-Item .\README_먼저읽어주세요.txt .\publish\NEC_Live_Client\README_먼저읽어주세요.txt -Force
+
+      - name: Zip portable folder and write SHA256
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $zip = 'NEC_Live_Client_CSharp_Portable_v20260603_sample1.zip'
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -LiteralPath .\publish\NEC_Live_Client -DestinationPath $zip -Force
+          $hash = Get-FileHash -Algorithm SHA256 -LiteralPath $zip
+          "$($hash.Hash)  $zip" | Set-Content -LiteralPath SHA256SUMS.txt -Encoding UTF8
+          Get-Content SHA256SUMS.txt
+
+      - name: Upload portable ZIP artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: NEC_Live_Client_CSharp_Portable
+          path: |
+            NEC_Live_Client_CSharp_Portable_v20260603_sample1.zip
+            SHA256SUMS.txt
+          retention-days: 14
